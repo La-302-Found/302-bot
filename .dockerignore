@@ -1,0 +1,14 @@
+dist
+.env
+.env.example
+
+.prettierrc
+eslint.config.mjs
+node_modules
+
+.git
+.gitignore
+.DS_Store
+.vscode
+.idea
+.eslintrc.js
