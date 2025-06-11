@@ -4,4 +4,4 @@ const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY
 });
 
-export default openrouter;
+export { openrouter as ai };
