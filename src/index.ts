@@ -7,6 +7,7 @@ import "@/core/bootstrap/clear";
 // Load features
 import "@/features/test";
 import "@/features/gm-roast";
+import "@/features/awareness";
 
 // Start the client
 client.login(process.env.TOKEN);

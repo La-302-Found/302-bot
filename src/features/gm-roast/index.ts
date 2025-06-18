@@ -23,8 +23,8 @@ ${messages.reverse().join("\n")}`;
 
 client.on("messageCreate", async (message) => {
   if (
-    message.content.toLowerCase().startsWith("gm") ||
-    (message.reference?.messageId && message.mentions.users.has(client.user?.id || ""))
+    message.content.toLowerCase().startsWith("gm")
+    // (message.reference?.messageId && message.mentions.users.has(client.user?.id || ""))
   ) {
     logger.info("Processing gm message", {
       userId: message.author.id,
