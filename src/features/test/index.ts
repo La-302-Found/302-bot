@@ -3,7 +3,7 @@ import { getFeatureLogger } from "@/lib/logger";
 
 export const logger = getFeatureLogger(__filename);
 
-client.on("messageCreate", (message) => {
+client.on("messageCreate", (message: any) => {
   if (message.content === "say something else") {
     logger.info("Responding to test message", {
       userId: message.author.id,
