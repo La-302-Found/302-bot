@@ -4,9 +4,11 @@
     "experimentalDecorators": true,
     "module": "CommonJS",
     "moduleResolution": "node",
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"],
+      "db": ["./database/index.ts"],
+      "db/schema": ["./database/schema/index.ts"]
     },
     "outDir": "./dist",
     "removeComments": true,

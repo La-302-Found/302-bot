@@ -3,15 +3,28 @@ import { z } from "zod";
 import { getFeatureLogger } from "@/lib/logger";
 import client from "@/core/client";
 import type { Message, TextBasedChannel } from "discord.js";
+import { tryCatch } from "../try-catch";
 
 const logger = getFeatureLogger(__filename);
 
 // Define the context interface
 export interface DiscordContext {
-  message?: Message;
+  message: Message;
   channel?: TextBasedChannel;
-  userId?: string;
-  guildId?: string;
+  userId: string;
+  emojis: {
+    name: string;
+    id: string;
+  }[];
+  users: {
+    id: string;
+    username: string;
+    displayName: string;
+  }[];
+  channels: {
+    id: string;
+    name: string;
+  }[];
 }
 
 export class DiscordTools {
@@ -19,6 +32,27 @@ export class DiscordTools {
 
   constructor(context: DiscordContext) {
     this.context = context;
+  }
+
+  prepareMessage(message: string) {
+    return (
+      message
+        // Prepare emojis
+        .replace(/:(\w+):/g, (_, emojiName) => {
+          const emoji = this.context.emojis.find((e) => e.name === emojiName);
+          return emoji ? `<:${emoji.name}:${emoji.id}>` : `:${emojiName}:`;
+        })
+        // Prepare mentions
+        .replace(/<@!(\d+)>/g, (_, userId) => {
+          const user = this.context.users.find((u) => u.id === userId);
+          return user ? `<@!${user.id}>` : `<@!${userId}>`;
+        })
+        // Prepare channels
+        .replace(/<#(\d+)>/g, (_, channelId) => {
+          const channel = this.context.channels.find((c) => c.id === channelId);
+          return channel ? `<#${channel.id}>` : `<#${channelId}>`;
+        })
+    );
   }
 
   skipTool = tool({
@@ -42,18 +76,27 @@ export class DiscordTools {
     execute: async ({ content, messageId, channelId }) => {
       logger.info("Reply requested", { messageId, channelId, contentLength: content.length });
 
-      const channel = client.channels.cache.get(channelId);
+      const { data: channel, error } = await tryCatch(() => client.channels.cache.get(channelId));
 
-      if (!channel || !channel.isTextBased()) {
+      if (error || !channel || !channel.isTextBased()) {
+        logger.error("Channel not found or not text-based", { channelId });
         return { success: false, error: "Channel not found or not text-based" };
       }
 
-      const message = await channel.messages.fetch(messageId);
-      if (!message) {
+      const { data: message, error: messageError } = await tryCatch(() => channel.messages.fetch(messageId));
+
+      if (messageError || !message) {
+        logger.error("Message not found", { messageId });
         return { success: false, error: "Message not found" };
       }
 
-      const reply = await message.reply(content);
+      const { data: reply, error: replyError } = await tryCatch(() => message.reply(this.prepareMessage(content)));
+
+      if (replyError) {
+        logger.error("Error replying to message", { replyError });
+        return { success: false, error: "Error replying to message" };
+      }
+
       return { success: true, replyId: reply.id };
     }
   });
@@ -71,16 +114,27 @@ export class DiscordTools {
       const targetChannelId = channelId || this.context.channel?.id;
 
       if (!targetChannelId) {
+        logger.error("Channel ID is required");
         return { success: false, error: "Channel ID is required" };
       }
 
-      const channel = client.channels.cache.get(targetChannelId);
+      const { data: channel, error } = await tryCatch(() => client.channels.cache.get(targetChannelId));
 
-      if (!channel || !channel.isSendable()) {
+      if (error || !channel || !channel.isSendable()) {
+        logger.error("Channel not found or not sendable", { targetChannelId });
         return { success: false, error: "Channel not found or not sendable" };
       }
 
-      const sentMessage = await channel.send(content);
+      const { data: sentMessage, error: sentMessageError } = await tryCatch(async () => {
+        const message = await channel.send(this.prepareMessage(content));
+        return message;
+      });
+
+      if (sentMessageError) {
+        logger.error("Error sending message", { sentMessageError });
+        return { success: false, error: "Error sending message" };
+      }
+
       return { success: true, messageId: sentMessage.id };
     }
   });
@@ -95,19 +149,31 @@ export class DiscordTools {
     execute: async ({ messageId, channelId, emoji }) => {
       logger.info("Reaction requested", { messageId, channelId, emoji });
 
-      const channel = client.channels.cache.get(channelId);
+      const { data: channel, error } = await tryCatch(() => client.channels.cache.get(channelId));
 
-      if (!channel || !channel.isTextBased()) {
+      if (error || !channel || !channel.isTextBased()) {
+        logger.error("Channel not found or not text-based", { channelId });
         return { success: false, error: "Channel not found or not text-based" };
       }
 
-      const message = await channel.messages.fetch(messageId);
-      if (!message) {
+      const { data: message, error: messageError } = await tryCatch(() => channel.messages.fetch(messageId));
+
+      if (messageError || !message) {
+        logger.error("Message not found", { messageId });
         return { success: false, error: "Message not found" };
       }
 
-      await message.react(emoji);
-      return { success: true };
+      const { data: reaction, error: reactionError } = await tryCatch(async () => {
+        const reaction = await message.react(this.prepareMessage(emoji));
+        return reaction;
+      });
+
+      if (reactionError) {
+        logger.error("Error adding reaction", { reactionError });
+        return { success: false, error: "Error adding reaction" };
+      }
+
+      return { success: true, newCount: reaction.count };
     }
   });
 
@@ -121,38 +187,53 @@ export class DiscordTools {
     execute: async ({ messageId, channelId, emoji }) => {
       logger.info("Reaction removal requested", { messageId, channelId, emoji });
 
-      const channel = client.channels.cache.get(channelId);
+      const { data: channel, error } = await tryCatch(() => client.channels.cache.get(channelId));
 
-      if (!channel || !channel.isTextBased()) {
+      if (error || !channel || !channel.isTextBased()) {
+        logger.error("Channel not found or not text-based", { channelId });
         return { success: false, error: "Channel not found or not text-based" };
       }
 
-      const message = await channel.messages.fetch(messageId);
-      if (!message) {
+      const { data: message, error: messageError } = await tryCatch(() => channel.messages.fetch(messageId));
+
+      if (messageError || !message) {
+        logger.error("Message not found", { messageId });
         return { success: false, error: "Message not found" };
       }
 
-      const reaction = message.reactions.cache.get(emoji);
-      if (!reaction) {
+      const { data: reaction, error: reactionError } = await tryCatch(() => message.reactions.cache.get(emoji));
+
+      if (reactionError || !reaction) {
+        logger.error("Reaction not found", { emoji });
         return { success: false, error: "Reaction not found" };
       }
 
-      await reaction.users.remove(client.user?.id);
-      return { success: true };
+      const { data: removedReaction, error: removedReactionError } = await tryCatch(async () => {
+        const removedReaction = await reaction.users.remove(client.user?.id);
+        return removedReaction;
+      });
+
+      if (removedReactionError) {
+        logger.error("Error removing reaction", { removedReactionError });
+        return { success: false, error: "Error removing reaction" };
+      }
+
+      return { success: true, newCount: removedReaction.count };
     }
   });
 
   joinVoiceChannelTool = tool({
     description: "Join a voice channel",
     parameters: z.object({
-      channelId: z.string().describe("The voice channel ID to join")
+      channelId: z.string().describe("The voice channel ID to join (get it from list_all_channels tool)")
     }),
     execute: async ({ channelId }) => {
       logger.info("Voice channel join requested", { channelId });
 
-      const channel = client.channels.cache.get(channelId);
+      const { data: channel, error } = await tryCatch(() => client.channels.cache.get(channelId));
 
-      if (!channel || !channel.isVoiceBased()) {
+      if (error || !channel || !channel.isVoiceBased()) {
+        logger.error("Voice channel not found", { channelId });
         return { success: false, error: "Voice channel not found" };
       }
 
@@ -178,6 +259,15 @@ export class DiscordTools {
     }
   });
 
+  listAllChannelsTool = tool({
+    description: "List all channels in the server",
+    parameters: z.object({}),
+    execute: async () => {
+      logger.info("Listing all channels", { channels: this.context.channels });
+      return { success: true, channels: this.context.channels };
+    }
+  });
+
   // Method to get all tools as an object
   getTools() {
     return {
@@ -187,12 +277,8 @@ export class DiscordTools {
       add_reaction: this.addReactionTool,
       remove_reaction: this.removeReactionTool,
       join_voice_channel: this.joinVoiceChannelTool,
-      leave_voice_channel: this.leaveVoiceChannelTool
+      leave_voice_channel: this.leaveVoiceChannelTool,
+      list_all_channels: this.listAllChannelsTool
     };
   }
-}
-
-// Export a factory function for backward compatibility
-export function createDiscordTools(context: DiscordContext) {
-  return new DiscordTools(context);
 }

@@ -30,22 +30,9 @@ export function createAnnaTools(discordContext: DiscordContext) {
     remove_reaction: tools.remove_reaction,
     join_voice_channel: tools.join_voice_channel,
     leave_voice_channel: tools.leave_voice_channel,
+    list_all_channels: tools.list_all_channels,
 
     // Information tools
     search_web: searchWebTool
   };
 }
-
-// For backward compatibility, export a default set of tools without context
-// Note: Discord tools won't have access to context when used this way
-export const annaTools = {
-  // Memory tools
-  add_memories: addMemoryTool,
-  search_memory: searchMemoryTool,
-  update_memories: updateMemoryTool,
-  delete_memory: deleteMemoryTool,
-  list_memories: listMemoriesTool,
-
-  // Information tools
-  search_web: searchWebTool
-};
