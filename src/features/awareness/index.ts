@@ -2,7 +2,7 @@ import client from "@/core/client";
 import { ai } from "@/lib/ai";
 import { getFeatureLogger } from "@/lib/logger";
 import { generateText, Message } from "ai";
-import { annaTools } from "@/lib/tools";
+import { createAnnaTools } from "@/lib/tools";
 import { getSystemPrompt } from "./prompt";
 
 export const logger = getFeatureLogger(__filename);
@@ -22,6 +22,14 @@ client.on("messageCreate", async (message) => {
     });
 
     try {
+      // Create tools with context
+      const contextualTools = createAnnaTools({
+        message: message,
+        channel: message.channel.isTextBased() ? message.channel : undefined,
+        userId: message.author.id,
+        guildId: message.guild?.id
+      });
+
       // Get the last 50 messages in the channel for context
       const messages = await message.channel.messages.fetch({ limit: 50 }).then((msgs) =>
         msgs.map(
@@ -48,7 +56,7 @@ client.on("messageCreate", async (message) => {
         model: ai("anthropic/claude-4-sonnet"),
         temperature: 0.7,
         maxSteps: 10, // Allow Anna to use multiple tools
-        tools: annaTools,
+        tools: contextualTools,
         messages: [
           {
             role: "system",
@@ -66,10 +74,7 @@ client.on("messageCreate", async (message) => {
         stepsCount: steps?.length || 0
       });
     } catch (error) {
-      logger.error("Error processing awareness message", {
-        userId: message.author.id,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      logger.error("Error processing message", { error });
 
       await message.reply("Hey! I'm having a bit of trouble processing that right now 😅");
     }
